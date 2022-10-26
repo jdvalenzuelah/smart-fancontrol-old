@@ -3,6 +3,7 @@ from shutil import ExecError
 from paramiko import SSHClient
 from comms.CommsSpec import CommsSpec
 from comms.impl.ipmi.tool.FanControl import FanControl
+from comms.impl.ipmi.tool.TempSensor import TempSensor
 from comms.impl.ipmi.tool import shellutils
 from paramiko.client import SSHClient
 
@@ -14,9 +15,10 @@ requires impitool and sensors to be installed in target host
 """
 class IPMIToolSSH(CommsSpec):
     
-    def __init__(self, host: str, port: int, username: str, password: str, commands: FanControl, require_sudo=True, ipmitool="ipmitool") -> None:
+    def __init__(self, host: str, port: int, username: str, password: str, commands: FanControl, tempsensor: TempSensor, require_sudo=True, ipmitool="ipmitool") -> None:
         super().__init__()
         self._commands = commands
+        self._tempsensor = tempsensor
         self.require_sudo = require_sudo
         self.ipmitool = ipmitool
         self._password = password
@@ -33,17 +35,7 @@ class IPMIToolSSH(CommsSpec):
 
     def _exec_cmd(self, cmd) -> bool:
         cmd = cmd if not self.require_sudo else self._sudo_command(cmd)
-        _, stdout, stderr = self._client.exec_command(cmd)
-        
-        error = stderr.read()
-        if(error):
-            #TODO: Handle error
-            #print(error)
-            pass
-        
-        #TODO: Handle returned value
-        #print(stdout.read())
-        return True
+        return self._client.exec_command(cmd)
 
     def set_fanspeed(self, pwm: int) -> bool:
         if 100 >= pwm >= 0:
@@ -57,5 +49,6 @@ class IPMIToolSSH(CommsSpec):
             return False
 
     def get_temp_c(self) -> float:
-        #cmd = self._impitool_raw_command(self._commands.fan_speed_command(hex(pwm)))
-        return 0
+        _, stdout, stderr = self._exec_cmd(self._tempsensor.get_cpu_temp_command());
+        result = stdout.read().decode('utf-8')
+        return self._tempsensor.parse_temp_response(result)
